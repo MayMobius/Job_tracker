@@ -1,0 +1,28 @@
+/* App.css */
+.custom-bounce {
+  animation: bounce 1s infinite;
+}
+
+.container {
+  max-width: 600px;
+  margin: 2rem auto;
+  background: white;
+  padding: 2rem;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.job-title {
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #333;
+}
+
+.delete-button {
+  background-color: #e11d48;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+}

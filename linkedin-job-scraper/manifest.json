@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "LinkedIn Job Scraper",
+  "version": "1.0",
+  "permissions": ["scripting", "downloads", "activeTab"],
+  "host_permissions": [
+    "https://www.linkedin.com/my-items/saved-jobs/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
