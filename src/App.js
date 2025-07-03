@@ -1,117 +1,56 @@
 import { useEffect, useState } from 'react';
 
-// 🛠️ 请替换为你最新部署的 Apps Script 网络应用 URL（JSONP 版 exec）：
-const APPS_SCRIPT_URL =
-  'https://script.google.com/macros/s/AKfycbxT4PTEQ1oZns_iby5XEIhwzL7KpwE_raEKek3OPSe297yBeAyaojHelojSypaaeEDv/exec';
-
-// 去重用 Key
+// 生成去重 key
 const makeKey = (title, company) =>
   `${title.trim().toLowerCase()}|${company.trim().toLowerCase()}`;
 
 function App() {
-  // —— 状态定义 —— //
+  // ▼ 原 Gmail 同步逻辑（已注释）▼
+  /*
+  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/……/exec';
+  const syncFromGmail = () => { … };
+  useEffect(() => { syncFromGmail() }, []);
+  */
+  // ▲ 原 Gmail 同步逻辑（已注释）▲
+
+  // 表单、搜索与筛选状态
+  const [jobTitle, setJobTitle]       = useState('');
+  const [company, setCompany]         = useState('');
+  const [status, setStatus]           = useState('Applied');
+  const [searchTerm, setSearchTerm]   = useState('');
+  const [statusFilter, setStatusFilter] = useState('All');  // 新增
+
+  // 分页
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  // 同步中指示（Gmail 同步被注释掉，暂时不用）
+  const [loading, setLoading] = useState(false);
+
+  // 主数据，从 localStorage 读取
   const [jobs, setJobs] = useState(() => {
     const saved = localStorage.getItem('jobList');
     return saved ? JSON.parse(saved) : [];
   });
-  const [jobTitle, setJobTitle] = useState('');
-  const [company, setCompany] = useState('');
-  const [status, setStatus] = useState('Applied');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
-  const [loading, setLoading] = useState(false);
-
-  // —— 持久化 jobs —— //
   useEffect(() => {
     localStorage.setItem('jobList', JSON.stringify(jobs));
   }, [jobs]);
 
-  // —— JSONP 同步函数 —— //
-  const syncFromGmail = () => {
-    console.log('🟢 开始同步 Gmail 数据');
-    setLoading(true);
-
-    // 全局回调
-    window.__GMAIL_SYNC_CB = ({ applications = [], rejections = [] }) => {
-      console.log(
-        '🟢 JSONP 回调，apps:',
-        applications.length,
-        'rejs:',
-        rejections.length
-      );
-      setJobs(prev => {
-        const map = new Map();
-        // 1. 本地已有
-        prev.forEach(job => {
-          const normTitle = job.title
-            .replace(/^Your application to\s*/i, '')
-            .trim();
-          map.set(makeKey(normTitle, job.company), {
-            ...job,
-            title: normTitle
-          });
-        });
-        // 2. applications
-        applications.forEach(app => {
-          const key = makeKey(app.title, app.company);
-          if (!map.has(key)) {
-            map.set(key, {
-              id: Date.now() + Math.random(),
-              title: app.title,
-              company: app.company,
-              status: 'Applied',
-              createdAt: app.date
-            });
-          }
-        });
-        // 3. rejections
-        rejections.forEach(rj => {
-          const title = rj.title.replace(/^Your application to\s*/i, '').trim();
-          const comp  = rj.company.trim();
-          const key   = makeKey(title, comp);
-          if (map.has(key)) {
-            const old = map.get(key);
-            map.set(key, { ...old, title, company: comp, status: 'Rejected' });
-          } else {
-            map.set(key, {
-              id: Date.now() + Math.random(),
-              title,
-              company: comp,
-              status: 'Rejected',
-              createdAt: rj.date
-            });
-          }
-        });
-        return Array.from(map.values());
-      });
-
-      // 清理
-      setLoading(false);
-      delete window.__GMAIL_SYNC_CB;
-      document.body.removeChild(script);
-    };
-
-    // 动态插入 JSONP script
-    const script = document.createElement('script');
-    script.src = `${APPS_SCRIPT_URL}?callback=__GMAIL_SYNC_CB`;
-    // script.crossOrigin = 'anonymous';
-    document.body.appendChild(script);
+  // 一键清空
+  const handleClearAll = () => {
+    if (window.confirm('确定要清空所有记录吗？此操作不可恢复。')) {
+      setJobs([]);
+    }
   };
 
-  // 首次挂载自动同步
-  useEffect(() => {
-    syncFromGmail();
-  }, []);
-
-  // 手动刷新
-  const handleRefresh = () => {
-    syncFromGmail();
-  };
-
-  // —— CRUD & Import —— //
+  // 添加（含去重）
   const handleSubmit = e => {
     e.preventDefault();
+    const key = makeKey(jobTitle, company);
+    if (jobs.some(j => makeKey(j.title, j.company) === key)) {
+      alert('已存在相同的职位和公司，跳过添加');
+      return;
+    }
     setJobs([
       ...jobs,
       {
@@ -119,7 +58,7 @@ function App() {
         title: jobTitle.trim(),
         company: company.trim(),
         status,
-        createdAt: new Date().toLocaleString()
+        createdAt: new Date().toLocaleString(),
       }
     ]);
     setJobTitle('');
@@ -127,14 +66,19 @@ function App() {
     setStatus('Applied');
   };
 
+  // 删除
   const handleDelete = id => {
     setJobs(jobs.filter(j => j.id !== id));
   };
 
+  // 改状态
   const handleStatusChange = (id, newStatus) => {
-    setJobs(jobs.map(j => (j.id === id ? { ...j, status: newStatus } : j)));
+    setJobs(jobs.map(j =>
+      j.id === id ? { ...j, status: newStatus } : j
+    ));
   };
 
+  // JSON 导入并去重
   const handleImport = e => {
     const file = e.target.files[0];
     if (!file) return;
@@ -142,18 +86,18 @@ function App() {
     reader.onload = evt => {
       try {
         const imported = JSON.parse(evt.target.result);
-        const formatted = imported.map((j, idx) => ({
-          id: Date.now() + idx + Math.random(),
-          title: (j.title || '').trim(),
-          company: (j.company || '').trim(),
+        const formatted = imported.map((j,i) => ({
+          id: Date.now() + i,
+          title: (j.title||'').trim(),
+          company: (j.company||'').trim(),
           status: 'Applied',
-          createdAt: j.appliedAt || new Date().toLocaleString()
+          createdAt: j.appliedAt || new Date().toLocaleString(),
         }));
         setJobs(prev => {
           const map = new Map();
-          prev.forEach(j => map.set(makeKey(j.title, j.company), j));
+          prev.forEach(j => map.set(makeKey(j.title,j.company), j));
           formatted.forEach(j => {
-            const key = makeKey(j.title, j.company);
+            const key = makeKey(j.title,j.company);
             if (!map.has(key)) map.set(key, j);
           });
           return Array.from(map.values());
@@ -166,92 +110,117 @@ function App() {
     e.target.value = null;
   };
 
-  // —— 搜索 & 分页 —— //
-  const filtered = jobs.filter(
-    j =>
-      j.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      j.company.toLowerCase().includes(searchTerm.toLowerCase())
+  // 搜索 + 筛选
+  let filtered = jobs.filter(j =>
+    j.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    j.company.toLowerCase().includes(searchTerm.toLowerCase())
   );
+  if (statusFilter !== 'All') {
+    filtered = filtered.filter(j => j.status === statusFilter);
+  }
+
+  // 分页计算
   const totalPages = Math.max(1, Math.ceil(filtered.length / itemsPerPage));
-  const firstIndex = (currentPage - 1) * itemsPerPage;
-  const currentJobs = filtered.slice(firstIndex, firstIndex + itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const currentJobs = filtered.slice(startIndex, startIndex + itemsPerPage);
+
+  // 状态颜色映射
+  const statusColor = {
+    Applied: 'text-green-600',
+    Interviewing: 'text-blue-600',
+    Rejected: 'text-red-600',
+  };
 
   return (
     <div className="min-h-screen bg-gray-100 py-10 px-4">
       <div className="max-w-2xl mx-auto bg-white p-6 rounded-lg shadow">
-        <h1 className="text-3xl font-bold text-center mb-4 text-indigo-600">
+
+        <h1 className="text-3xl font-bold text-center mb-6 text-indigo-600">
           Job Tracker
         </h1>
 
-        {/* 同步指示 & 刷新按钮 */}
-        {loading && (
-          <div className="text-center mb-4 text-gray-500">同步中，请稍候…</div>
-        )}
+        {/* 一键清空 */}
         <div className="text-right mb-4">
           <button
-            onClick={handleRefresh}
-            className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600"
+            onClick={handleClearAll}
+            className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600"
           >
-            刷新同步
+            清空所有
           </button>
         </div>
 
-        {/* 导入 LinkedIn JSON */}
+        {/* 导入 JSON */}
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-700 mb-1">
             导入 LinkedIn 已申请职位
           </label>
           <input
-            type="file"
-            accept="application/json"
+            type="file" accept="application/json"
             onChange={handleImport}
             className="block w-full text-sm text-gray-500
-                       file:mr-4 file:py-2 file:px-4 file:rounded
-                       file:border-0 file:text-sm file:font-semibold
-                       file:bg-indigo-50 file:text-indigo-700
-                       hover:file:bg-indigo-100"
+                       file:mr-4 file:py-2 file:px-4
+                       file:rounded file:border-0 file:text-sm
+                       file:font-semibold file:bg-indigo-50
+                       file:text-indigo-700 hover:file:bg-indigo-100"
           />
         </div>
 
-        {/* 搜索框 */}
-        <input
-          type="text"
-          placeholder="搜索职位或公司名"
-          value={searchTerm}
-          onChange={e => setSearchTerm(e.target.value)}
-          className="w-full mb-6 p-2 border border-gray-300 rounded"
-        />
-
-        {/* 统计 */}
-        <div className="mb-4 text-sm text-gray-600">
-          <strong>状态统计：</strong>
-          Applied: {jobs.filter(j => j.status === 'Applied').length} ｜{' '}
-          Interviewing:{' '}
-          {jobs.filter(j => j.status === 'Interviewing').length} ｜{' '}
-          Rejected: {jobs.filter(j => j.status === 'Rejected').length}
+        {/* 搜索和状态筛选 */}
+        <div className="flex flex-col sm:flex-row sm:space-x-4 mb-6">
+          <input
+            type="text"
+            placeholder="搜索职位或公司名"
+            value={searchTerm}
+            onChange={e => {
+              setSearchTerm(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="flex-1 mb-2 sm:mb-0 p-2 border border-gray-300 rounded"
+          />
+          <select
+            value={statusFilter}
+            onChange={e => {
+              setStatusFilter(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="w-full sm:w-48 p-2 border border-gray-300 rounded"
+          >
+            <option value="All">All</option>
+            <option value="Applied">Applied</option>
+            <option value="Interviewing">Interviewing</option>
+            <option value="Rejected">Rejected</option>
+          </select>
         </div>
 
-        {/* 添加职位表单 */}
+        {/* 状态统计 */}
+        <div className="mb-6 text-sm text-gray-600">
+          <strong>总数：</strong>{jobs.length} &nbsp;|&nbsp;
+          <span className={statusColor.Applied}>
+            Applied: {jobs.filter(j=>j.status==='Applied').length}
+          </span> &nbsp;|&nbsp;
+          <span className={statusColor.Interviewing}>
+            Interviewing: {jobs.filter(j=>j.status==='Interviewing').length}
+          </span> &nbsp;|&nbsp;
+          <span className={statusColor.Rejected}>
+            Rejected: {jobs.filter(j=>j.status==='Rejected').length}
+          </span>
+        </div>
+
+        {/* 添加表单 */}
         <form onSubmit={handleSubmit} className="mb-6 space-y-4">
           <input
-            type="text"
-            placeholder="Job Title"
-            value={jobTitle}
-            onChange={e => setJobTitle(e.target.value)}
-            required
-            className="w-full p-2 border border-gray-300 rounded"
+            type="text" placeholder="Job Title"
+            value={jobTitle} onChange={e=>setJobTitle(e.target.value)}
+            required className="w-full p-2 border border-gray-300 rounded"
           />
           <input
-            type="text"
-            placeholder="Company"
-            value={company}
-            onChange={e => setCompany(e.target.value)}
-            required
-            className="w-full p-2 border border-gray-300 rounded"
+            type="text" placeholder="Company"
+            value={company} onChange={e=>setCompany(e.target.value)}
+            required className="w-full p-2 border border-gray-300 rounded"
           />
           <select
             value={status}
-            onChange={e => setStatus(e.target.value)}
+            onChange={e=>setStatus(e.target.value)}
             className="w-full p-2 border border-gray-300 rounded"
           >
             <option value="Applied">Applied</option>
@@ -266,8 +235,8 @@ function App() {
           </button>
         </form>
 
-        {/* 职位列表 */}
-        <ul className="space-y-4">
+        {/* 列表 */}
+        <ul className="space-y-4 mb-6">
           {currentJobs.map(job => (
             <li
               key={job.id}
@@ -283,18 +252,21 @@ function App() {
                   </div>
                 </div>
                 <button
-                  onClick={() => handleDelete(job.id)}
+                  onClick={()=>handleDelete(job.id)}
                   className="text-white bg-red-500 hover:bg-red-600 px-3 py-1 rounded"
                 >
                   删除
                 </button>
               </div>
-              <div className="text-sm">
+              <div className="flex items-center text-sm">
                 状态：
+                <span className={`${statusColor[job.status]} font-medium ml-2`}>
+                  {job.status}
+                </span>
                 <select
                   value={job.status}
-                  onChange={e => handleStatusChange(job.id, e.target.value)}
-                  className="ml-2 border border-gray-300 rounded px-2 py-1"
+                  onChange={e=>handleStatusChange(job.id, e.target.value)}
+                  className="ml-4 border border-gray-300 rounded px-2 py-1"
                 >
                   <option value="Applied">Applied</option>
                   <option value="Interviewing">Interviewing</option>
@@ -306,35 +278,34 @@ function App() {
         </ul>
 
         {/* 分页 */}
-        <div className="mt-6 flex justify-center items-center space-x-2">
+        <div className="flex justify-center items-center space-x-2">
           <button
-            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-            disabled={currentPage === 1}
+            onClick={()=>setCurrentPage(p=>Math.max(1,p-1))}
+            disabled={currentPage===1}
             className="p-2 border rounded-full disabled:opacity-50"
           >
             ‹
           </button>
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+          {Array.from({length: totalPages},(_,i)=>(i+1)).map(p=>(
             <button
               key={p}
-              onClick={() => setCurrentPage(p)}
+              onClick={()=>setCurrentPage(p)}
               className={`w-8 h-8 flex items-center justify-center rounded-full transition ${
-                currentPage === p
-                  ? 'bg-indigo-500 text-white'
-                  : 'text-gray-700 hover:bg-gray-100'
+                currentPage===p ? 'bg-indigo-500 text-white' : 'text-gray-700 hover:bg-gray-100'
               }`}
             >
               {p}
             </button>
           ))}
           <button
-            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-            disabled={currentPage === totalPages}
+            onClick={()=>setCurrentPage(p=>Math.min(totalPages,p+1))}
+            disabled={currentPage===totalPages}
             className="p-2 border rounded-full disabled:opacity-50"
           >
             ›
           </button>
         </div>
+
       </div>
     </div>
   );
