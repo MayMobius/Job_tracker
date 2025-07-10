@@ -124,6 +124,39 @@ function App() {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentJobs = filtered.slice(startIndex, startIndex + itemsPerPage);
 
+  // 生成分页页码列表（含省略号）
+  const getPageList = () => {
+    const maxNumbers = 6;
+    const pages = [];
+    const leftCount = Math.floor(maxNumbers / 2);
+    const rightCount = maxNumbers - leftCount - 1;
+
+    if (totalPages <= maxNumbers) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+      return pages;
+    }
+    if (currentPage <= leftCount + 1) {
+      for (let i = 1; i <= maxNumbers; i++) pages.push(i);
+      pages.push('...', totalPages);
+      return pages;
+    }
+    if (currentPage >= totalPages - rightCount) {
+      pages.push(1, '...');
+      for (let i = totalPages - maxNumbers + 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+      return pages;
+    }
+    pages.push(1, '...');
+    const start = currentPage - leftCount;
+    for (let i = start; i < start + maxNumbers; i++) {
+      pages.push(i);
+    }
+    pages.push('...', totalPages);
+    return pages;
+  };
+  const pageList = getPageList();
+
   // 状态颜色映射
   const statusColor = {
     Applied: 'text-green-600',
@@ -280,26 +313,30 @@ function App() {
         {/* 分页 */}
         <div className="flex justify-center items-center space-x-2">
           <button
-            onClick={()=>setCurrentPage(p=>Math.max(1,p-1))}
-            disabled={currentPage===1}
+            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
             className="p-2 border rounded-full disabled:opacity-50"
           >
             ‹
           </button>
-          {Array.from({length: totalPages},(_,i)=>(i+1)).map(p=>(
-            <button
-              key={p}
-              onClick={()=>setCurrentPage(p)}
-              className={`w-8 h-8 flex items-center justify-center rounded-full transition ${
-                currentPage===p ? 'bg-indigo-500 text-white' : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              {p}
-            </button>
-          ))}
+          {pageList.map((item, idx) =>
+            item === '...' ? (
+              <span key={idx} className="px-2">…</span>
+            ) : (
+              <button
+                key={item}
+                onClick={() => setCurrentPage(item)}
+                className={`w-8 h-8 flex items-center justify-center rounded-full transition ${
+                  currentPage === item ? 'bg-indigo-500 text-white' : 'text-gray-700 hover:bg-gray-100'
+                }`}                
+              >
+                {item}
+              </button>
+            )
+          )}
           <button
-            onClick={()=>setCurrentPage(p=>Math.min(totalPages,p+1))}
-            disabled={currentPage===totalPages}
+            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages}
             className="p-2 border rounded-full disabled:opacity-50"
           >
             ›
